@@ -22,7 +22,7 @@ sudo apt-get install swig
 swig -python -c++ pafprocess.i && python3 setup.py build_ext --inplace
 ```
 
-To run application using Web-camera:
+To run application using Web-camera (`sudo` is needed to set linux console to graphics mode before drawing to framebuffer):
 ```bash
 sudo ./run.sh /dev/video0
 ```
