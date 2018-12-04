@@ -2,8 +2,7 @@
 KerasPoseNet inference example
 
 Network used is from: https://github.com/ildoonet/tf-pose-estimation
-git SHA1 ID: b119759e8a41828c633bd39b5c883bf5a56a214f
-Apache 2.0 License
+(git SHA1 ID: b119759e8a41828c633bd39b5c883bf5a56a214f, Apache 2.0 License).
 
 To generate network inference sources and weights files use the [tool](https://github.com/DigitalMediaProfessionals/tool):
 ```bash
