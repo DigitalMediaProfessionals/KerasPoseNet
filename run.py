@@ -37,6 +37,8 @@ parser.add_argument("INPUT", type=str,
                     help="Input video file or capture device in OpenCV format")
 parser.add_argument("-p", "--peaks_threshold", type=float, default=0.2,
                     help="Peaks threshold")
+parser.add_argument("-l", "--flog", type=str, default="run.log",
+                    help="Additional file to write logs to")
 args = parser.parse_args()
 
 
@@ -124,34 +126,40 @@ def array_address(a):
 
 
 class Logger(object):
-    def __init__(self, stdscr):
+    def __init__(self, stdscr, flog):
         self.stdscr = stdscr
+        self.flog = flog
+
+    def _log_msg(self, msg):
+        self.flog.write("%s\n" % msg)
+        self.flog.flush()
+        sys.stdout.write("%s\r\n" % msg)
+        self.stdscr.refresh()
 
     def info(self, msg, *args):
-        sys.stdout.write("INFO: %s\r\n" % (msg % args))
-        self.stdscr.refresh()
+        self._log_msg("INFO: %s" % (msg % args))
 
     def error(self, msg, *args):
-        sys.stdout.write("ERROR: %s\r\n" % (msg % args))
-        self.stdscr.refresh()
+        self._log_msg("ERROR: %s" % (msg % args))
 
     def warning(self, msg, *args):
-        sys.stdout.write("WARNING: %s\r\n" % (msg % args))
-        self.stdscr.refresh()
+        self._log_msg("WARNING: %s" % (msg % args))
 
 
 class FB(Logger):
-    def __init__(self, stdscr):
+    def __init__(self, stdscr, flog):
         self.was_graphics = False
-        super(FB, self).__init__(stdscr)
+        super(FB, self).__init__(stdscr, flog)
 
         self.info("Initializing linux framebuffer...")
         if init_fb():
             raise RuntimeError("init_fb() failed")
         self.was_graphics = (get_console_mode() == 1)
         if not self.was_graphics:
+            self.info("Switching console to graphics mode")
             set_console_mode(1)
-            self.was_graphics = (get_console_mode() == 1)
+        else:
+            self.info("Console is already in graphics mode")
         self.info("Initialized linux framebuffer")
 
     def update(self, frame_data):
@@ -163,17 +171,26 @@ class FB(Logger):
         if swap_buffer():
             raise RuntimeError("swap_buffer() failed")
 
-    def __del__(self):
+    def release(self):
         if not self.was_graphics:
+            self.info("Switching console to text mode")
             set_console_mode(0)
+            self.was_graphics = (get_console_mode() == 1)
+        else:
+            self.info("Console was in graphics mode before, "
+                      "will not switch it to text mode")
         release_fb()
 
 
 class Main(Logger):
-    def __init__(self, stdscr, capture_source, peaks_threshold):
-        super(Main, self).__init__(stdscr)
+    def __init__(self, stdscr, flog, capture_source, peaks_threshold):
+        super(Main, self).__init__(stdscr, flog)
+        self.fb = FB(self.stdscr, flog)
+        self.capture_source = capture_source
+        self.peaks_threshold = peaks_threshold
 
-        stdscr.nodelay(True)
+    def execute(self):
+        self.stdscr.nodelay(True)
 
         self.info("Initializing PoseNet...")
         self.net = pose_net.create()
@@ -186,7 +203,7 @@ class Main(Logger):
             raise RuntimeError("Failed to commit PoseNet")
         self.info("Successfully initialized PoseNet")
 
-        if not self.open_video_capture(capture_source):
+        if not self.open_video_capture():
             return
 
         width = 432
@@ -198,7 +215,6 @@ class Main(Logger):
         paf_hwc = np.zeros((out_height, out_width, 38), dtype=np.float32)
         input_data_hwc = np.zeros((height, width, 3), dtype=np.uint8)
 
-        self.fb = FB(self.stdscr)
         frame = np.zeros([get_screen_height(), get_screen_width(), 3],
                          dtype=np.uint8)
 
@@ -211,7 +227,8 @@ class Main(Logger):
             else:
                 ret_val, image_original = self.cap.read(image_original)
             if not ret_val:
-                self.info("End of %s reached, will reopen", capture_source)
+                self.info("End of %s reached, will reopen",
+                          self.capture_source)
                 self.cap.release()
                 self.cap = None
                 image_original = None
@@ -220,8 +237,9 @@ class Main(Logger):
                 t0 = time.time()
                 import gc
                 gc.collect()
-                self.info("Garbage collection completed in %.3f sec", time.time() - t0)
-                if not self.open_video_capture(capture_source):
+                self.info("Garbage collection completed in %.3f sec",
+                          time.time() - t0)
+                if not self.open_video_capture():
                     return
                 continue
 
@@ -240,7 +258,8 @@ class Main(Logger):
 
             t0pre = t00
             cv2.resize(image_original, (dst_w, dst_h), image_resized_bgr)
-            cv2.cvtColor(image_resized_bgr, cv2.COLOR_BGR2RGB, dst=image_resized)
+            cv2.cvtColor(image_resized_bgr, cv2.COLOR_BGR2RGB,
+                         dst=image_resized)
 
             # import pydevd
             # pydevd.settrace("172.16.40.212")
@@ -258,7 +277,8 @@ class Main(Logger):
                 input_data_hwc, [0, 1, 2], [1, 0, 2]).astype(np.float32) -
                 128.0).astype(np.float16)
 
-            pose_net.put_input(self.net, np.ascontiguousarray(input_data_whc16))
+            pose_net.put_input(
+                self.net, np.ascontiguousarray(input_data_whc16))
             dt_pre = time.time() - t0pre
             self.info("Preprocessed input in %.3f sec", dt_pre)
 
@@ -270,8 +290,9 @@ class Main(Logger):
 
             t0pp = time.time()
             t0 = t0pp
-            extract_heatmap_peaks(array_address(output_whc8),
-                                  array_address(peaks_chw), peaks_threshold)
+            extract_heatmap_peaks(
+                array_address(output_whc8), array_address(peaks_chw),
+                self.peaks_threshold)
             self.info("heatmap peaks extracted in %.3f sec", time.time() - t0)
 
             t0 = time.time()
@@ -289,7 +310,7 @@ class Main(Logger):
             t0 = time.time()
             humans = estimate_paf(peaks_hwc, heatmap_hwc, paf_hwc)
             self.info("Extracted %d humans in %.3f sec",
-                         len(humans), time.time() - t0)
+                      len(humans), time.time() - t0)
             dt_pp = time.time() - t0pp
 
             t0 = time.time()
@@ -347,7 +368,7 @@ class Main(Logger):
 
             paused = False
             while True:
-                c = stdscr.getch()
+                c = self.stdscr.getch()
                 if c == -1:
                     if paused:
                         continue
@@ -364,23 +385,36 @@ class Main(Logger):
                     self.cap.release()
                     return
 
-    def open_video_capture(self, capture_source):
-        self.info("Opening %s...", capture_source)
+    def open_video_capture(self):
+        self.info("Opening %s...", self.capture_source)
         t0 = time.time()
-        self.cap = cv2.VideoCapture(capture_source)
+        self.cap = cv2.VideoCapture(self.capture_source)
         if not self.cap.isOpened():
-            self.error("Could not open %s", capture_source)
+            self.error("Could not open %s", self.capture_source)
             return False
-        self.info("Opened %s in %.3f sec", capture_source, time.time() - t0)
+        self.info("Opened %s in %.3f sec",
+                  self.capture_source, time.time() - t0)
         return True
+
+
+def main(stdscr, capture_source, peaks_threshold):
+    with open(args.flog, "w") as flog:
+        obj = Main(stdscr, flog, capture_source, peaks_threshold)
+        try:
+            obj.execute()
+        finally:
+            obj.fb.release()
+        del obj
+    import gc
+    gc.collect()
 
 
 if __name__ == "__main__":
     try:
         logging.info("Executing...")
-        curses.wrapper(Main, args.INPUT, args.peaks_threshold)
+        curses.wrapper(main, args.INPUT, args.peaks_threshold)
     except KeyboardInterrupt:
-        logging.info("Ctrl+C pressed, will exit")
+        logging.info("Ctrl+C pressed, exiting...")
     except Exception as e:
         logging.error("Exception occured: %s", e)
     logging.debug("Done")
