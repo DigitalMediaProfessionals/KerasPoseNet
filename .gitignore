@@ -1,0 +1,21 @@
+# Binaries
+*.o
+*.so
+
+# Python cache
+*.pyc
+*.pyo
+__pycache__/
+
+# Build folder
+pafprocess/build/
+
+# Generated sources
+KerasPoseNet_gen.cpp
+KerasPoseNet_gen.h
+
+# Generated document files
+doc/
+
+# Generated weights
+*_weights.bin
