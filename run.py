@@ -397,8 +397,8 @@ class Main(Logger):
         return True
 
 
-def main(stdscr, capture_source, peaks_threshold):
-    with open(args.flog, "w") as flog:
+def main(stdscr, capture_source, peaks_threshold, log_fnme):
+    with open(log_fnme, "w") as flog:
         obj = Main(stdscr, flog, capture_source, peaks_threshold)
         try:
             obj.execute()
@@ -412,9 +412,9 @@ def main(stdscr, capture_source, peaks_threshold):
 if __name__ == "__main__":
     try:
         logging.info("Executing...")
-        curses.wrapper(main, args.INPUT, args.peaks_threshold)
+        curses.wrapper(main, args.INPUT, args.peaks_threshold, args.flog)
     except KeyboardInterrupt:
         logging.info("Ctrl+C pressed, exiting...")
     except Exception as e:
         logging.error("Exception occured: %s", e)
-    logging.debug("Done")
+    logging.info("Done, see %s for detailed log", args.flog)
