@@ -24,15 +24,15 @@ swig -python -c++ pafprocess.i && python3 setup.py build_ext --inplace
 
 To run application using Web-camera (`sudo` is needed to set linux console to graphics mode before drawing to framebuffer):
 ```bash
-sudo ./run.sh /dev/video0
+sudo ./run.py /dev/video0
 ```
 
 To run application with input image:
 ```bash
-sudo ./run.sh IMAGE_PATH
+sudo ./run.py IMAGE_PATH
 ```
 
 To run application with multiple images (img_01.jpg, img_02.jpg, ...):
 ```bash
-sudo ./run.sh img_%02d.jpg
+sudo ./run.py img_%02d.jpg
 ```

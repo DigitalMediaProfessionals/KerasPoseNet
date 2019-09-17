@@ -67,6 +67,12 @@ bool run_network(net_id id)
 	return nets[id]->RunNetwork();
 }
 
+int get_output_layer_count(net_id id)
+{
+	return nets[id]->get_output_layer_count();
+}
+
+
 /**
  * @brief pass input to the CNet
  * @param[in] (id) ID of CNet network
@@ -109,15 +115,23 @@ np::ndarray get_final_output(net_id id, int index = 0)
 	CNet * net = nets[id];
 
 	// get output
-	vector<float> * output = new std::vector<float>();
-	net->get_final_output(*output, index);
+	vector<float> output;
+	net->get_final_output(output, index);
 
 	// convert the vector to ndarray
 	static const np::dtype ftdt = np::dtype::get_builtin<float>();
-	const vector<int> shape(1, output->size());
-	const vector<int> stride(1, sizeof(float));
-	py::object own;
-	return np::from_data(&(*output)[0], ftdt, shape, stride, own);
+	py::tuple shape = py::make_tuple(output.size());
+	np::ndarray array = np::empty(shape, ftdt);
+
+	int stride = array.strides(0);
+	char *ptr = array.get_data();
+	size_t len = output.size();
+
+	for (size_t i = 0; i < len; i++) {
+		float *p = reinterpret_cast<float*>(ptr + stride * i);
+		*p = output[i];
+	}
+	return array;
 }
 
 int get_conv_usec(net_id id)
@@ -155,6 +169,7 @@ BOOST_PYTHON_MODULE(py_keras_pose_net) {
 	py::def("put_input", put_input);
 	py::def("get_final_output", get_final_output, f_overloads(
 		py::args("id", "index")));
+	py::def("get_output_layer_count", get_output_layer_count);
 	py::def("get_conv_usec", get_conv_usec);
 	py::def("get_fc_usec", get_fc_usec);
 	py::def("get_cpu_usec", get_cpu_usec);
